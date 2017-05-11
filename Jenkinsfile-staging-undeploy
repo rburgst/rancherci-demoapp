@@ -1,0 +1,17 @@
+node {
+    stage('undeploy staging') {
+        dir('webshop') {
+            withCredentials([usernamePassword(credentialsId: '6cc6afa8-0869-43f0-91a2-d306642ecafa', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
+                def rancherCli = docker.image('rancher-server:5000/rburgst/rancher-cli-configured')
+                rancherCli.pull()
+
+                rancherCli.inside {
+                    try {
+                        // remove the old rancher stack in case it exists, if not ignore all errors
+                        sh 'rancher rm demo-webshop-staging'
+                    } catch (any) {}
+                }
+            }
+        }
+    }
+}

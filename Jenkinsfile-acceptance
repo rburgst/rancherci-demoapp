@@ -1,0 +1,117 @@
+import groovy.json.*
+
+node {
+    def tagName = "latest"
+    try {
+        tagName = "${TAG}"
+    } catch (Throwable e) {
+        // ignore if not set
+    }
+
+    stage('Checkout') {
+        // in special folder so that gradle-home does not get wiped after checkout of repository
+        dir("webshop") {
+            // Temporary solution until https://issues.jenkins-ci.org/browse/JENKINS-38046
+            checkout scm
+        }
+    }
+
+    stage('Build') {
+        withEnv(["GRADLE_USER_HOME=${pwd()}" + "/.gradle-home"]) { // Sub directory within the workspace but not in the repository folder
+            dir("webshop") {
+                try {
+                    withCredentials([usernamePassword(credentialsId: '6cc6afa8-0869-43f0-91a2-d306642ecafa', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
+                        def java8Jdk = docker.image('rancher-server:5000/openjdk:8-jdk')
+                        java8Jdk.pull()
+                        java8Jdk.inside{
+                            // Execute gradle script
+                            sh './gradlew clean web:build -is -Pnexus_user=$USERNAME -Pnexus_password=$PASSWORD -Pnexus_contextUrl=$NEXUS_CONTEXTURL -Dorg.gradle.jvmargs="-Xmx512M"'
+                        }
+                    }
+
+                    currentBuild.result = 'SUCCESS'
+                } catch (any) {
+                    currentBuild.result = 'FAILURE'
+                    throw any   // Rethrow exception to prevent the build from proceeding
+                } finally {
+                    junit allowEmptyResults: true,  testResults: '**/build/test-results/**/*.xml'
+//                    step([$class: 'Mailer', notifyEveryUnstableBuild: true, sendToIndividuals: true,
+//                        recipients: 'rburgst@gmail.com'])
+                }
+            }
+        }
+    }
+
+    def nexusImageUrl = "${NEXUS_DOCKER_REGISTRY}/demo/web:${tagName}"
+    stage('Docker') {
+        dir("webshop") {
+            // Prepare docker context for build docker image
+            sh 'mkdir -p docker/app/context'
+            sh 'cp web/build/libs/web-*.jar docker/app/context/web.jar'
+
+            // Build image, tag it and push staging image into registry
+            def acceptanceContainer = docker.build(nexusImageUrl, 'docker/app')
+
+            withCredentials([usernamePassword(credentialsId: '6cc6afa8-0869-43f0-91a2-d306642ecafa', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
+                sh "docker login --username=${USERNAME} --password=${PASSWORD} --email=${USERNAME} ${NEXUS_DOCKER_REGISTRY}"
+
+                // Note that this would be the better solution, however we currently are not able to preconfigure Jenkins with 'true' credentials.
+                // docker.withRegistry("${NEXUS_DOCKER_REGISTRY}", "docker-credentials") {
+                acceptanceContainer.push()
+                acceptanceContainer.push 'latest'
+            }
+        }
+    }
+
+    stage('Acceptance') {
+        withEnv(["GRADLE_USER_HOME=${pwd()}" + "/.gradle-home"]) {
+            // Sub directory within the workspace but not in the repository folder
+            dir('webshop') {
+                def rancherCli = docker.image('rancher-server:5000/rburgst/rancher-cli-configured')
+                rancherCli.pull()
+
+                // in case there is still a running stack, make sure it is gone
+                rancherCli.inside {
+                    try {
+                        sh 'cd docker && rancher rm demo-webshop-acceptance'
+                    } catch (any) {
+                        // ignore in case the stack is not running
+                    }
+                }
+
+                // now start the acceptance test stack
+                rancherCli.inside {
+                    sh 'cd docker && rancher up -s demo-webshop-acceptance -d'
+                }
+
+                String ipAddressApp = "app.demo-webshop-acceptance"
+
+                try {
+                    def java8Jdk = docker.image('rancher-server:5000/openjdk:8-jdk')
+                    java8Jdk.pull()
+
+                    // this ensures that the docker container can access rancher managed networks
+                    // https://docs.rancher.com/rancher/v1.6/en/rancher-services/networking/
+                    java8Jdk.inside("--label io.rancher.container.network=true") {
+                        // Execute gradle script
+                        sh './gradlew clean acceptance-test:test -is -Dorg.gradle.jvmargs="-Xmx512M" -DACCEPTANCE_TEST_URL=http://' + ipAddressApp + ":9090"
+                    }
+
+                    currentBuild.result = 'SUCCESS'
+                } catch (any) {
+                    println("EXC: ${any}")
+                    currentBuild.result = 'FAILURE'
+                    throw any   // Rethrow exception to prevent the build from proceeding
+                } finally {
+                    junit allowEmptyResults: true, testResults: '**/build/test-results/**/*.xml'
+
+                    // in any case stop the stack
+                    rancherCli.inside {
+                        // Execute gradle script
+                        sh 'cd docker && rancher rm demo-webshop-acceptance'
+                    }
+                }
+            }
+        }
+    }
+}

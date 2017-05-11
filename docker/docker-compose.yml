@@ -1,0 +1,21 @@
+version: '2'
+services:
+  postgres:
+    image: "rancher-server:5000/postgres:alpine"
+    ports:
+    - "5432:5432"
+    environment:
+     - POSTGRES_DB=webshop
+     - POSTGRES_USER=user
+     - POSTGRES_PASSWORD=pass1234
+    networks:
+     - back-tier
+  app:
+    ports:
+     - "9090:9090"
+    image: "rancher-agent-01:5000/demo/web:latest"
+    environment:
+     - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/webshop
+     - SERVER_PORT=9090
+    links:
+     - postgres

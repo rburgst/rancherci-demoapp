@@ -1,0 +1,26 @@
+allprojects {
+    def haveNexus = project.hasProperty("nexus_contextUrl")
+    buildscript {
+        repositories {
+            if (haveNexus) {
+                maven {
+                    url "${project.nexus_contextUrl}/repository/maven-public"
+                }
+            }
+            mavenCentral()
+        }
+    }
+
+    repositories {
+        if (haveNexus) {
+            maven {
+                url "${project.nexus_contextUrl}nexus/repository/maven-public"
+            }
+        }
+        mavenCentral()
+    }
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '3.5'
+}
