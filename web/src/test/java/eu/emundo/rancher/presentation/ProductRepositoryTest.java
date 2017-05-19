@@ -32,9 +32,14 @@ public class ProductRepositoryTest {
         assertThat(result).extracting("productName").contains("my test product");
     }
 
+    @Test
+    public void testThatSucceeds() {
+        assertThat(2).isEqualTo(2);
+    }
+
     private void givenProductWithName(String productName) {
         Product productWithName = new Product();
-        
+
         productWithName.setProductName(productName);
         productWithName.setDescription("a test");
 
