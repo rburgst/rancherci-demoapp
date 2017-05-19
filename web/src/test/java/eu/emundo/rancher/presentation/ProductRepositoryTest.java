@@ -34,6 +34,7 @@ public class ProductRepositoryTest {
 
     private void givenProductWithName(String productName) {
         Product productWithName = new Product();
+        
         productWithName.setProductName(productName);
         productWithName.setDescription("a test");
 
