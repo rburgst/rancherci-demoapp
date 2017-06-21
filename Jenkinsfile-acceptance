@@ -35,8 +35,6 @@ node {
                     throw any   // Rethrow exception to prevent the build from proceeding
                 } finally {
                     junit allowEmptyResults: true,  testResults: '**/build/test-results/**/*.xml'
-//                    step([$class: 'Mailer', notifyEveryUnstableBuild: true, sendToIndividuals: true,
-//                        recipients: 'rburgst@gmail.com'])
                 }
             }
         }

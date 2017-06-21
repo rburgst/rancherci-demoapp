@@ -2,6 +2,8 @@ package eu.emundo.rancher.presentation;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.data.domain.PageRequest;
@@ -53,6 +55,7 @@ interface ProductRepository extends PagingAndSortingRepository<Product, Long> {
 @Controller
 @Transactional(readOnly = true)
 class ProductController {
+    private static final Logger logger = LoggerFactory.getLogger(ProductController.class);
 
     private final ProductRepository repository;
 
@@ -67,6 +70,8 @@ class ProductController {
         product.setProductName("Product " + UUID.randomUUID());
         product.setDescription("randomly generated product");
         repository.save(product);
+        logger.warn("saving product {}", product);
+
         return "redirect:/";
     }
 
